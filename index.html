@@ -1,0 +1,581 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  User, Lock, MapPin, Calendar, LogOut, FileText, 
+  CheckCircle, XCircle, AlertCircle, Users, Plus, Trash2, 
+  Download, School, Menu, X
+} from 'lucide-react';
+
+// --- MOCK DATA & UTILS ---
+
+// Simulasi "Bcrypt" (Sangat sederhana hanya untuk demo, jangan gunakan di production)
+const hashPassword = (password) => `hashed_${password.split('').reverse().join('')}`;
+const checkPassword = (input, stored) => hashPassword(input) === stored;
+
+// Simulasi "JWT"
+const generateToken = (user) => `ey_mock_jwt_${user.id}_${Date.now()}`;
+
+// Data Awal (Seed Data)
+const INITIAL_USERS = [
+  { id: 1, username: 'admin', password: hashPassword('admin'), role: 'admin', name: 'Administrator', classId: null },
+  { id: 2, username: 'guru', password: hashPassword('guru'), role: 'wali', name: 'Budi Santoso, S.Pd', classId: 'XII-IPA-1' },
+  { id: 3, username: 'siswa', password: hashPassword('siswa'), role: 'siswa', name: 'Ahmad Rizky', classId: 'XII-IPA-1' },
+  { id: 4, username: 'siswa2', password: hashPassword('siswa2'), role: 'siswa', name: 'Siti Aminah', classId: 'XII-IPA-1' },
+];
+
+const INITIAL_CLASSES = ['XII-IPA-1', 'XII-IPA-2', 'XII-IPS-1'];
+
+// --- COMPONENTS ---
+
+// 1. LOGIN PAGE
+const LoginPage = ({ onLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const users = JSON.parse(localStorage.getItem('absensi_users')) || INITIAL_USERS;
+    const user = users.find(u => u.username === username);
+
+    if (user && checkPassword(password, user.password)) {
+      const token = generateToken(user);
+      localStorage.setItem('session_token', token);
+      onLogin(user);
+    } else {
+      setError('Username atau password salah!');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-green-50 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border-t-4 border-green-600">
+        <div className="text-center mb-8">
+          <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <School className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">SMAN 1 PURWANIDA</h1>
+          <p className="text-gray-500 text-sm">Sistem Absensi Online</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-100 text-red-600 p-3 rounded-lg mb-4 text-sm flex items-center">
+            <AlertCircle size={16} className="mr-2" /> {error}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <div className="relative">
+              <User className="absolute left-3 top-3 text-gray-400" size={18} />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                placeholder="Masukkan username"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                placeholder="Masukkan password"
+                required
+              />
+            </div>
+          </div>
+          <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+            Masuk
+          </button>
+        </form>
+        
+        <div className="mt-6 text-xs text-gray-400 text-center">
+          <p>Demo Credentials:</p>
+          <p>Admin: admin/admin | Guru: guru/guru | Siswa: siswa/siswa</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 2. DASHBOARD SISWA
+const DashboardSiswa = ({ user }) => {
+  const [status, setStatus] = useState('Hadir');
+  const [reason, setReason] = useState('');
+  const [location, setLocation] = useState(null);
+  const [loadingLoc, setLoadingLoc] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [todayAbsence, setTodayAbsence] = useState(null);
+
+  useEffect(() => {
+    const allAbsences = JSON.parse(localStorage.getItem('absensi_data')) || [];
+    const userHistory = allAbsences.filter(a => a.userId === user.id);
+    setHistory(userHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+
+    // Check if already absent today
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecord = userHistory.find(a => a.date === today);
+    setTodayAbsence(todayRecord);
+  }, [user.id]);
+
+  const getLocation = () => {
+    setLoadingLoc(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation(`${position.coords.latitude}, ${position.coords.longitude}`);
+          setLoadingLoc(false);
+        },
+        () => {
+          setLocation("Lokasi tidak terdeteksi (Izin ditolak/Error)");
+          setLoadingLoc(false);
+        }
+      );
+    } else {
+      setLocation("Browser tidak mendukung GPS");
+      setLoadingLoc(false);
+    }
+  };
+
+  const handleCheckIn = () => {
+    const newRecord = {
+      id: Date.now(),
+      userId: user.id,
+      userName: user.name,
+      userClass: user.classId,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString('id-ID'),
+      timestamp: new Date().toISOString(),
+      status: status,
+      reason: status === 'Hadir' ? '-' : reason,
+      location: location || 'Tanpa Lokasi'
+    };
+
+    const allAbsences = JSON.parse(localStorage.getItem('absensi_data')) || [];
+    allAbsences.push(newRecord);
+    localStorage.setItem('absensi_data', JSON.stringify(allAbsences));
+    
+    setTodayAbsence(newRecord);
+    setHistory([newRecord, ...history]);
+    alert('Absensi berhasil dicatat!');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-xl shadow-sm border">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Halo, {user.name} 👋</h2>
+        
+        {todayAbsence ? (
+          <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-center">
+            <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-2" />
+            <h3 className="font-bold text-green-800">Sudah Check-in Hari Ini</h3>
+            <p className="text-green-700 text-sm">Status: {todayAbsence.status} • Pukul: {todayAbsence.time}</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Status Kehadiran</label>
+              <div className="grid grid-cols-3 gap-3">
+                {['Hadir', 'Izin', 'Sakit'].map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setStatus(opt)}
+                    className={`py-2 rounded-lg border text-sm font-medium transition ${
+                      status === opt 
+                      ? 'bg-blue-600 text-white border-blue-600' 
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {status !== 'Hadir' && (
+              <textarea
+                className="w-full p-3 border rounded-lg text-sm"
+                placeholder="Tuliskan alasan izin/sakit..."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            )}
+
+            <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+              <div className="flex items-center text-sm text-gray-600">
+                <MapPin size={16} className="mr-2" />
+                <span className="truncate max-w-[200px]">{location || "Lokasi belum diambil"}</span>
+              </div>
+              <button 
+                onClick={getLocation} 
+                disabled={loadingLoc}
+                className="text-xs text-blue-600 font-semibold hover:underline"
+              >
+                {loadingLoc ? 'Mencari...' : 'Ambil Lokasi'}
+              </button>
+            </div>
+
+            <button 
+              onClick={handleCheckIn}
+              disabled={!location && status === 'Hadir'} 
+              className={`w-full py-3 rounded-lg font-bold text-white transition ${
+                (!location && status === 'Hadir') ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              Kirim Absensi
+            </button>
+            {!location && status === 'Hadir' && <p className="text-xs text-red-500 text-center">*Wajib ambil lokasi untuk Hadir</p>}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border">
+        <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Calendar size={18} className="mr-2"/> Riwayat Absensi</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="p-3">Tanggal</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Waktu</th>
+                <th className="p-3">Ket</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={h.id} className="border-b last:border-0">
+                  <td className="p-3">{h.date}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      h.status === 'Hadir' ? 'bg-green-100 text-green-700' :
+                      h.status === 'Sakit' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {h.status}
+                    </span>
+                  </td>
+                  <td className="p-3">{h.time}</td>
+                  <td className="p-3 text-gray-500 truncate max-w-[100px]">{h.reason}</td>
+                </tr>
+              ))}
+              {history.length === 0 && (
+                <tr><td colSpan="4" className="p-4 text-center text-gray-400">Belum ada data</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 3. DASHBOARD WALI KELAS
+const DashboardWali = ({ user }) => {
+  const [absences, setAbsences] = useState([]);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    const allAbsences = JSON.parse(localStorage.getItem('absensi_data')) || [];
+    // Filter only students in my class
+    const classAbsences = allAbsences.filter(a => a.userClass === user.classId);
+    setAbsences(classAbsences);
+  }, [user.classId]);
+
+  const filteredData = absences.filter(a => a.date === filterDate);
+
+  const exportCSV = () => {
+    let csvContent = "data:text/csv;charset=utf-8,Nama,Tanggal,Status,Waktu,Keterangan\n";
+    filteredData.forEach(row => {
+      csvContent += `${row.userName},${row.date},${row.status},${row.time},${row.reason}\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Laporan_Absensi_${user.classId}_${filterDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-xl shadow-sm border flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Kelas: {user.classId}</h2>
+          <p className="text-gray-500 text-sm">Rekapitulasi Absensi Siswa</p>
+        </div>
+        <div className="flex gap-2">
+          <input 
+            type="date" 
+            value={filterDate} 
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm"
+          />
+          <button onClick={exportCSV} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center">
+            <Download size={16} className="mr-2"/> Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-gray-100 text-gray-700 font-semibold">
+            <tr>
+              <th className="p-4">Nama Siswa</th>
+              <th className="p-4">Status</th>
+              <th className="p-4">Waktu Check-in</th>
+              <th className="p-4">Lokasi / Ket</th>
+              <th className="p-4">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredData.length > 0 ? filteredData.map((item) => (
+              <tr key={item.id} className="border-b hover:bg-gray-50">
+                <td className="p-4 font-medium">{item.userName}</td>
+                <td className="p-4">
+                   <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      item.status === 'Hadir' ? 'bg-green-100 text-green-700' :
+                      item.status === 'Sakit' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {item.status}
+                    </span>
+                </td>
+                <td className="p-4">{item.time}</td>
+                <td className="p-4 text-gray-500">
+                  {item.status === 'Hadir' ? 
+                    <span className="flex items-center text-xs"><MapPin size={12} className="mr-1"/> {item.location}</span> : 
+                    item.reason}
+                </td>
+                <td className="p-4">
+                  <button className="text-blue-600 hover:underline text-xs">Edit</button>
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan="5" className="p-8 text-center text-gray-400">Tidak ada data absensi pada tanggal ini.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// 4. DASHBOARD ADMIN
+const DashboardAdmin = () => {
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [newUser, setNewUser] = useState({ username: '', password: '', name: '', role: 'siswa', classId: 'XII-IPA-1' });
+
+  useEffect(() => {
+    setUsers(JSON.parse(localStorage.getItem('absensi_users')) || INITIAL_USERS);
+  }, []);
+
+  const handleDelete = (id) => {
+    if (window.confirm('Hapus user ini?')) {
+      const updatedUsers = users.filter(u => u.id !== id);
+      setUsers(updatedUsers);
+      localStorage.setItem('absensi_users', JSON.stringify(updatedUsers));
+    }
+  };
+
+  const handleAddUser = (e) => {
+    e.preventDefault();
+    const userToAdd = {
+      id: Date.now(),
+      ...newUser,
+      password: hashPassword(newUser.password)
+    };
+    const updatedUsers = [...users, userToAdd];
+    setUsers(updatedUsers);
+    localStorage.setItem('absensi_users', JSON.stringify(updatedUsers));
+    setNewUser({ username: '', password: '', name: '', role: 'siswa', classId: 'XII-IPA-1' });
+    alert('User berhasil ditambahkan');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        <button 
+          onClick={() => setActiveTab('users')}
+          className={`p-4 rounded-xl border text-center font-bold ${activeTab === 'users' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white'}`}
+        >
+          <Users className="mx-auto mb-2"/> Manajemen User
+        </button>
+        <button 
+           onClick={() => alert('Fitur rekap global akan tampil disini (simulasi).')}
+           className="p-4 rounded-xl border bg-white text-center text-gray-500 hover:bg-gray-50"
+        >
+          <FileText className="mx-auto mb-2"/> Rekap Sekolah
+        </button>
+      </div>
+
+      {activeTab === 'users' && (
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Form Add User */}
+          <div className="md:col-span-1 bg-white p-5 rounded-xl shadow-sm border h-fit">
+            <h3 className="font-bold mb-4 text-gray-800">Tambah User Baru</h3>
+            <form onSubmit={handleAddUser} className="space-y-3">
+              <input required placeholder="Nama Lengkap" className="w-full p-2 border rounded text-sm" 
+                value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} />
+              <input required placeholder="Username" className="w-full p-2 border rounded text-sm"
+                value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
+              <input required type="password" placeholder="Password" className="w-full p-2 border rounded text-sm"
+                value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+              
+              <select className="w-full p-2 border rounded text-sm" 
+                value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                <option value="siswa">Siswa</option>
+                <option value="wali">Wali Kelas</option>
+                <option value="admin">Admin</option>
+              </select>
+
+              {newUser.role !== 'admin' && (
+                 <select className="w-full p-2 border rounded text-sm" 
+                 value={newUser.classId} onChange={e => setNewUser({...newUser, classId: e.target.value})}>
+                 {INITIAL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+              )}
+
+              <button type="submit" className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 text-sm font-bold flex justify-center items-center">
+                <Plus size={16} className="mr-1"/> Tambah
+              </button>
+            </form>
+          </div>
+
+          {/* List Users */}
+          <div className="md:col-span-2 bg-white p-5 rounded-xl shadow-sm border">
+             <h3 className="font-bold mb-4 text-gray-800">Daftar Pengguna</h3>
+             <div className="overflow-auto max-h-[400px]">
+               <table className="w-full text-sm text-left">
+                 <thead className="bg-gray-100 sticky top-0">
+                   <tr>
+                     <th className="p-3">Nama</th>
+                     <th className="p-3">Role</th>
+                     <th className="p-3">Kelas</th>
+                     <th className="p-3">Aksi</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {users.map(u => (
+                     <tr key={u.id} className="border-b">
+                       <td className="p-3 font-medium">{u.name} <br/><span className="text-xs text-gray-400">@{u.username}</span></td>
+                       <td className="p-3 capitalize">{u.role === 'wali' ? 'Wali Kelas' : u.role}</td>
+                       <td className="p-3">{u.classId || '-'}</td>
+                       <td className="p-3">
+                         {u.username !== 'admin' && (
+                           <button onClick={() => handleDelete(u.id)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                             <Trash2 size={16} />
+                           </button>
+                         )}
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// MAIN APP COMPONENT
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Init Data LocalStorage
+  useEffect(() => {
+    if (!localStorage.getItem('absensi_users')) {
+      localStorage.setItem('absensi_users', JSON.stringify(INITIAL_USERS));
+    }
+    // Check Session
+    const token = localStorage.getItem('session_token');
+    // In real app, verify token. Here we just rely on state for simplicity after reload unless persisted carefully.
+    // For this demo, we require login on refresh to keep state clean, or we could persist user obj.
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('session_token');
+    setUser(null);
+  };
+
+  if (!user) {
+    return <LoginPage onLogin={setUser} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 font-sans text-gray-800">
+      {/* Navbar */}
+      <nav className="bg-green-700 text-white shadow-lg sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center space-x-3">
+             <School className="w-8 h-8 text-green-200" />
+             <div>
+               <h1 className="text-lg font-bold leading-tight">SMAN 1 PURWANIDA</h1>
+               <p className="text-xs text-green-200 opacity-80">Sistem Informasi Presensi</p>
+             </div>
+          </div>
+          
+          {/* Desktop Menu */}
+          <div className="hidden md:flex items-center space-x-6">
+            <div className="text-right">
+              <p className="text-sm font-semibold">{user.name}</p>
+              <p className="text-xs text-green-200 capitalize">{user.role === 'wali' ? 'Wali Kelas' : user.role}</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="bg-green-800 hover:bg-green-900 p-2 rounded-full transition"
+              title="Logout"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+
+          {/* Mobile Menu Toggle */}
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden">
+            {mobileMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
+
+        {/* Mobile Menu Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-green-800 p-4 space-y-4 border-t border-green-600">
+             <div className="flex items-center space-x-3 pb-4 border-b border-green-700">
+                <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center text-green-800 font-bold">
+                  {user.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="font-semibold">{user.name}</p>
+                  <p className="text-xs text-green-200 capitalize">{user.role}</p>
+                </div>
+             </div>
+             <button onClick={handleLogout} className="w-full text-left flex items-center space-x-2 text-red-200 hover:text-white">
+               <LogOut size={18} /> <span>Logout</span>
+             </button>
+          </div>
+        )}
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {user.role === 'siswa' && <DashboardSiswa user={user} />}
+        {user.role === 'wali' && <DashboardWali user={user} />}
+        {user.role === 'admin' && <DashboardAdmin />}
+      </main>
+      
+      <footer className="text-center text-gray-400 text-sm py-6">
+        &copy; 2025 SMAN 1 PURWANIDA - Presensi Online
+      </footer>
+    </div>
+  );
+};
+
+export default App;
